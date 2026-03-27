@@ -1,0 +1,12 @@
+2026/03/28-03:24:12.239 3444 Creating DB C:\Users\User\Documents\Website Project\jokihub-dashboard\.data\wwebjs-auth\session-jokihub-dashboard\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
+2026/03/28-03:24:12.262 3444 Reusing MANIFEST C:\Users\User\Documents\Website Project\jokihub-dashboard\.data\wwebjs-auth\session-jokihub-dashboard\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/03/28-03:24:39.604 3444 Level-0 table #5: started
+2026/03/28-03:24:39.714 3444 Level-0 table #5: 1014797 bytes OK
+2026/03/28-03:24:39.724 3444 Delete type=0 #3
+2026/03/28-03:24:45.418 3444 Level-0 table #7: started
+2026/03/28-03:24:45.528 3444 Level-0 table #7: 1125526 bytes OK
+2026/03/28-03:24:45.535 3444 Delete type=0 #4
+2026/03/28-03:24:45.595 36a0 Compacting 1@1 + 1@2 files
+2026/03/28-03:24:45.773 36a0 Generated table #8@1: 21441 keys, 993812 bytes
+2026/03/28-03:24:45.774 36a0 Compacted 1@1 + 1@2 files => 993812 bytes
+2026/03/28-03:24:45.784 36a0 compacted to: files[ 0 0 1 0 0 0 0 ]

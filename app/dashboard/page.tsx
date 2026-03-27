@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation"
 
-import { LogoutButton } from "@/components/logout-button"
 import { getAuthenticatedUser } from "@/lib/auth"
 
 export default async function DashboardPage() {
@@ -11,15 +10,11 @@ export default async function DashboardPage() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-2xl rounded-2xl border bg-card p-8 shadow-sm">
-        <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-3 text-muted-foreground">
-          Welcome back, {user.name || user.email}.
+    <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background px-4 py-6 md:px-8 md:py-8">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl items-center justify-center">
+        <p className="text-2xl font-semibold tracking-tight">
+          THIS IS DASHBOARD
         </p>
-        <div className="mt-6">
-          <LogoutButton />
-        </div>
       </div>
     </main>
   )

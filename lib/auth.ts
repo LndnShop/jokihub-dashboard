@@ -7,6 +7,9 @@ export type AuthUser = {
   id: string
   email: string
   name?: string
+  role?: string
+  avatar?: string
+  collectionId?: string
 }
 
 async function getAuthStore() {
@@ -51,5 +54,8 @@ export async function getAuthenticatedUser(): Promise<AuthUser | null> {
     id: record.id,
     email: record.email,
     name: record.name,
+    role: record.role,
+    avatar: record.avatar,
+    collectionId: record.collectionId,
   }
 }
