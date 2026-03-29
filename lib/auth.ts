@@ -10,6 +10,8 @@ export type AuthUser = {
   role?: string
   avatar?: string
   collectionId?: string
+  total_balance?: number
+  total_job?: number
 }
 
 async function getAuthStore() {
@@ -44,7 +46,7 @@ export async function getAuthenticatedUser(): Promise<AuthUser | null> {
     return null
   }
 
-  const record = authStore.record as Partial<AuthUser>
+  const record = authStore.record as any
 
   if (!record.id || !record.email) {
     return null
@@ -57,5 +59,7 @@ export async function getAuthenticatedUser(): Promise<AuthUser | null> {
     role: record.role,
     avatar: record.avatar,
     collectionId: record.collectionId,
+    total_balance: record.total_balance,
+    total_job: record.total_job,
   }
 }
