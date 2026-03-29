@@ -26,7 +26,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const state = await sendWhatsAppText(body.phone, body.message)
+    const adminName = user.name || user.email?.split("@")[0] || "Dashboard Admin"
+    const state = await sendWhatsAppText(body.phone, body.message, adminName)
 
     return NextResponse.json(state)
   } catch (error) {

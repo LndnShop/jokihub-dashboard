@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, MessageSquareMore, Settings } from "lucide-react"
+import { LayoutDashboard, MessageSquareMore, Settings, ChevronRight } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
 import {
@@ -14,7 +14,15 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 
 export function AppSidebar({
   user,
@@ -65,17 +73,44 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
               {user.isOwner ? (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === "/dashboard/settings"}
-                  >
-                    <Link href="/dashboard/settings">
-                      <Settings />
-                      <span>Settings</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <Collapsible defaultOpen={pathname.startsWith("/dashboard/settings")} className="group/collapsible">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        isActive={pathname.startsWith("/dashboard/settings")}
+                        tooltip="Settings"
+                      >
+                        <Settings />
+                        <span>Settings</span>
+                        <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname === "/dashboard/settings/general"}
+                          >
+                            <Link href="/dashboard/settings/general">
+                              <span>General</span>
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname === "/dashboard/settings/whatsapp" || pathname === "/dashboard/settings"}
+                          >
+                            <Link href="/dashboard/settings/whatsapp">
+                              <span>WhatsApp</span>
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
               ) : null}
             </SidebarMenu>
           </SidebarGroupContent>

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react"
 import {
   ChevronRight,
+  Info,
   MessageSquareMore,
   Phone,
   RefreshCw,
@@ -10,7 +11,27 @@ import {
   SendHorizontal,
   ShieldCheck,
   UserRound,
+  Zap,
+  FileText,
 } from "lucide-react"
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { OrderInputerSheet } from "@/components/order-inputer-sheet"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -23,6 +44,10 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import {
+  getQuickReplies,
+  type WhatsAppQuickReply,
+} from "@/lib/whatsapp-dashboard-storage"
 import { cn } from "@/lib/utils"
 
 type WhatsAppMessage = {
@@ -32,6 +57,7 @@ type WhatsAppMessage = {
   body: string
   direction: "inbound" | "outbound"
   timestamp: string
+  senderName?: string
 }
 
 type WhatsAppState = {
@@ -139,16 +165,70 @@ async function readJson(response: Response) {
   return data
 }
 
+function formatWhatsAppText(text: string) {
+  if (!text) return null
+
+  const rules = [
+    { regex: /```([\s\S]*?)```/g, format: (txt: string, i: number) => <code key={`code-${i}`} className="font-mono bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded text-[13px] mx-0.5">{txt}</code> },
+    { regex: /\*\*(.*?)\*\*/g, format: (txt: string, i: number) => <strong key={`bold2-${i}`} className="font-semibold">{txt}</strong> },
+    { regex: /\*(.*?)\*/g, format: (txt: string, i: number) => <strong key={`bold-${i}`} className="font-semibold">{txt}</strong> },
+    { regex: /_(.*?)_/g, format: (txt: string, i: number) => <em key={`italic-${i}`}>{txt}</em> },
+    { regex: /~(.*?)~/g, format: (txt: string, i: number) => <del key={`strike-${i}`}>{txt}</del> },
+  ]
+
+  const processChunk = (chunk: any, ruleIndex: number): any[] => {
+    if (typeof chunk !== "string") return [chunk]
+    if (ruleIndex >= rules.length) return [chunk]
+
+    const rule = rules[ruleIndex]
+    const parts = chunk.split(rule.regex)
+
+    if (parts.length === 1) {
+      return processChunk(chunk, ruleIndex + 1)
+    }
+
+    return parts.flatMap((part, i) => {
+      if (i % 2 === 1) {
+        return [rule.format(part, i)]
+      }
+      return processChunk(part, ruleIndex + 1)
+    })
+  }
+
+  return processChunk(text, 0).map((element, index) => (
+    typeof element === "string" ? <span key={`text-${index}`}>{element}</span> : <span key={`wrap-${index}`}>{element}</span>
+  ))
+}
+
 export function WhatsAppPanel() {
   const [state, setState] = useState(defaultState)
   const [phone, setPhone] = useState("")
   const [message, setMessage] = useState("")
+  const [quickReplies, setQuickReplies] = useState<WhatsAppQuickReply[]>([])
+  const [isContactInfoOpen, setIsContactInfoOpen] = useState(false)
+  const [isOrderInputerOpen, setIsOrderInputerOpen] = useState(false)
   const [selectedChatId, setSelectedChatId] = useState("")
   const [search, setSearch] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+    setQuickReplies(getQuickReplies())
+
+    const handleStorage = () => {
+      setQuickReplies(getQuickReplies())
+    }
+
+    window.addEventListener("storage", handleStorage)
+
+    return () => {
+      window.removeEventListener("storage", handleStorage)
+    }
+  }, [])
 
   async function refreshStatus(chatId?: string) {
     try {
@@ -255,43 +335,29 @@ export function WhatsAppPanel() {
     threads.find((thread) => thread.id === selectedChatId) ?? null
   const visibleMessages = activeThread
     ? state.messages.filter(
-        (entry) =>
-          (entry.threadId || getCanonicalThreadId(entry.from)) ===
-          activeThread.id
-      )
+      (entry) =>
+        (entry.threadId || getCanonicalThreadId(entry.from)) ===
+        activeThread.id
+    )
     : []
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [activeThread?.id, visibleMessages.length])
 
-  return (
-    <Card className="flex h-full min-h-0 flex-col gap-0 overflow-hidden border-border/70 bg-card py-0 shadow-sm">
-      <CardHeader className="border-b border-border/60 bg-muted/20 py-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-lg">Chat</CardTitle>
-            <CardDescription>
-              Live WhatsApp inbox using the current connected session.
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void refreshStatus()}
-              disabled={isSubmitting}
-              className="gap-2"
-            >
-              <RefreshCw className="size-4" />
-              Refresh
-            </Button>
-          </div>
+  if (!isMounted) {
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-0 overflow-hidden border border-border/70 bg-card shadow-sm rounded-xl">
+        <div className="flex h-full min-h-80 items-center justify-center p-0">
+          <div className="text-sm text-muted-foreground animate-pulse">Loading interface...</div>
         </div>
-      </CardHeader>
+      </div>
+    )
+  }
 
-      <CardContent className="h-full overflow-hidden p-0">
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-0 overflow-hidden border border-border/70 bg-card shadow-sm rounded-xl">
+      <div className="h-full overflow-hidden p-0">
         <div className="grid h-full min-h-0 lg:grid-cols-[320px_minmax(0,1fr)]">
           <aside className="flex min-h-0 flex-col overflow-hidden border-r border-border/60 bg-muted/30">
             <div className="space-y-4 border-b border-border/60 px-4 py-4">
@@ -366,11 +432,11 @@ export function WhatsAppPanel() {
                           <span className="text-[11px] text-muted-foreground">
                             {thread.lastTimestamp
                               ? new Date(
-                                  thread.lastTimestamp
-                                ).toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
+                                thread.lastTimestamp
+                              ).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
                               : ""}
                           </span>
                         </div>
@@ -427,7 +493,7 @@ export function WhatsAppPanel() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
                     <div className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
                       <MessageSquareMore className="size-3.5" />
                       Live inbox
@@ -436,6 +502,43 @@ export function WhatsAppPanel() {
                       <ShieldCheck className="size-3.5" />
                       WhatsApp
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsOrderInputerOpen(true)}
+                      className="ml-1 h-7 rounded-full bg-primary/10 px-3 text-primary hover:bg-primary/20 hover:text-primary border-primary/20 shadow-none font-semibold"
+                    >
+                      <FileText className="size-3.5 mr-1" />
+                      Order
+                    </Button>
+                    <Dialog open={isContactInfoOpen} onOpenChange={setIsContactInfoOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="size-8 rounded-full ml-1" title="Contact Info">
+                          <Info className="size-4 text-muted-foreground" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent
+                        className="fixed sm:max-w-[360px] max-w-[360px] w-[90%] left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%] rounded-2xl"
+                        style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
+                      >
+                        <DialogTitle className="sr-only">Contact Information</DialogTitle>
+                        <div className="flex flex-col items-center gap-4 py-4">
+                          <Avatar className="size-24 border border-border/60">
+                            <AvatarImage
+                              src={activeThread.profilePictureUrl || undefined}
+                              alt={activeThread.displayName || activeThread.phone}
+                            />
+                            <AvatarFallback className="bg-muted text-foreground text-2xl">
+                              <UserRound className="size-10" />
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="text-center">
+                            <h3 className="text-lg font-semibold">{activeThread.displayName}</h3>
+                            <p className="text-sm text-muted-foreground">{activeThread.phone}</p>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </div>
               ) : (
@@ -469,11 +572,11 @@ export function WhatsAppPanel() {
                             "max-w-[78%] rounded-2xl border px-4 py-3 shadow-xs",
                             isOutbound
                               ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border/70 bg-white text-background"
+                              : "text-primary-background border-border/70 bg-background"
                           )}
                         >
                           <p className="text-sm leading-6 wrap-break-word whitespace-pre-wrap">
-                            {entry.body}
+                            {formatWhatsAppText(entry.body)}
                           </p>
                           <p
                             className={cn(
@@ -484,6 +587,7 @@ export function WhatsAppPanel() {
                             )}
                           >
                             {new Date(entry.timestamp).toLocaleString()}
+                            {isOutbound && ` - Admin ${entry.senderName || "System"}`}
                           </p>
                         </div>
                       </div>
@@ -513,32 +617,88 @@ export function WhatsAppPanel() {
             <Separator />
 
             <form onSubmit={handleSend} className="bg-card px-5 py-4">
-              <div className="mx-auto flex max-w-4xl flex-col gap-3 md:flex-row">
-                <Input
+              <div className="mx-auto flex max-w-4xl flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-xs focus-within:ring-1 focus-within:ring-ring transition-shadow">
+                <textarea
                   id="wa-message"
                   placeholder={
                     activeThread
                       ? `Reply to ${activeThread.displayName}`
-                      : "Type a message"
+                      : "Type a message..."
                   }
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault()
+                      if (!isSubmitting && isConnected && phone.trim() && message.trim()) {
+                        const form = event.currentTarget.closest("form")
+                        if (form) form.requestSubmit()
+                      }
+                    }
+                  }}
                   disabled={isSubmitting}
-                  className="h-11 border-border/60 bg-background"
+                  rows={Math.max(1, Math.min(message.split('\n').length, 6))}
+                  className="min-h-[56px] w-full resize-none border-0 bg-transparent p-4 text-sm placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 />
-                <Button
-                  type="submit"
-                  disabled={!isConnected || isSubmitting || !phone.trim()}
-                  className="gap-2 md:min-w-32"
-                >
-                  <SendHorizontal className="size-4" />
-                  {isSubmitting ? "Sending..." : "Send"}
-                </Button>
+
+                <div className="flex items-center justify-between border-t border-border/40 bg-muted/20 p-2 md:px-3 md:py-2.5">
+                  <div className="flex items-center gap-1">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1.5 rounded-lg text-muted-foreground hover:text-foreground px-2"
+                          title="Quick Replies"
+                          disabled={!activeThread || isSubmitting}
+                        >
+                          <Zap className="size-[18px]" />
+                          <span className="hidden text-xs font-medium sm:inline-block">Quick Reply</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" sideOffset={10} className="w-[320px] max-h-[60vh] overflow-y-auto p-2">
+                        <DropdownMenuLabel>Quick Replies</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {quickReplies.length ? quickReplies.map((reply) => (
+                          <DropdownMenuItem
+                            key={reply.id}
+                            className="flex-col items-start justify-start text-left p-3 gap-1 cursor-pointer"
+                            onClick={() => {
+                              setMessage(reply.message)
+                            }}
+                          >
+                            <span className="font-semibold text-foreground">{reply.title}</span>
+                            <span className="text-muted-foreground text-xs whitespace-pre-wrap line-clamp-2">
+                              {reply.message}
+                            </span>
+                          </DropdownMenuItem>
+                        )) : (
+                          <div className="text-center p-4 text-sm text-muted-foreground border border-dashed rounded-lg border-border/70 mt-2">
+                            No quick replies found. Add some in the WhatsApp Settings.
+                          </div>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!isConnected || isSubmitting || !phone.trim() || !message.trim()}
+                    className="size-8 shrink-0 rounded-lg bg-primary text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95"
+                    title="Send message"
+                  >
+                    <SendHorizontal className="size-4" />
+                    <span className="sr-only">{isSubmitting ? "Sending..." : "Send"}</span>
+                  </Button>
+                </div>
               </div>
             </form>
           </section>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+      <OrderInputerSheet open={isOrderInputerOpen} onOpenChange={setIsOrderInputerOpen} />
+    </div>
   )
 }

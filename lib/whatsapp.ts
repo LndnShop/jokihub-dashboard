@@ -1,5 +1,7 @@
 import "server-only"
 
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs"
+import path from "node:path"
 import QRCode from "qrcode"
 import { Client, LocalAuth } from "whatsapp-web.js"
 
@@ -12,6 +14,7 @@ export type WhatsAppMessage = {
   body: string
   direction: "inbound" | "outbound"
   timestamp: string
+  senderName?: string
 }
 
 export type WhatsAppChat = {
@@ -68,6 +71,7 @@ type MessageLike = {
   _data?: {
     notifyName?: string
   }
+  senderName?: string
 }
 
 type ContactLike = {
@@ -100,6 +104,16 @@ const MAX_STORED_MESSAGES = 400
 const CHAT_SYNC_INTERVAL_MS = 4_000
 const PAIRING_CODE_TIMEOUT_MS = 25_000
 const DEFAULT_PAIRING_INTERVAL_MS = 180_000
+const WHATSAPP_CLIENT_ID = "jokihub-dashboard"
+const CURRENT_WORKING_DIRECTORY = process.cwd()
+const PROJECT_ROOT =
+  path.basename(CURRENT_WORKING_DIRECTORY) === "jokihub-dashboard"
+    ? CURRENT_WORKING_DIRECTORY
+    : path.resolve(CURRENT_WORKING_DIRECTORY, "jokihub-dashboard")
+const WHATSAPP_SESSION_ROOT = path.resolve(
+  PROJECT_ROOT,
+  process.env.WHATSAPP_SESSION_PATH?.trim() || ".wwebjs_auth"
+)
 
 function createInitialBaseState(): RuntimeState["baseState"] {
   return {
@@ -136,6 +150,47 @@ declare global {
 const runtime =
   globalThis.__jokihubWhatsAppRuntime ??
   (globalThis.__jokihubWhatsAppRuntime = createRuntimeState())
+
+function ensureSessionDirectory() {
+  mkdirSync(WHATSAPP_SESSION_ROOT, { recursive: true })
+}
+
+function getClientSessionDirectoryPath() {
+  return path.join(WHATSAPP_SESSION_ROOT, `session-${WHATSAPP_CLIENT_ID}`)
+}
+
+function getDefaultSessionDirectoryPath() {
+  return path.join(WHATSAPP_SESSION_ROOT, "session")
+}
+
+function getExistingSessionDirectoryPath() {
+  const clientSessionDirectoryPath = getClientSessionDirectoryPath()
+  const defaultSessionDirectoryPath = getDefaultSessionDirectoryPath()
+
+  if (existsSync(clientSessionDirectoryPath)) {
+    return clientSessionDirectoryPath
+  }
+
+  if (existsSync(defaultSessionDirectoryPath)) {
+    return defaultSessionDirectoryPath
+  }
+
+  return clientSessionDirectoryPath
+}
+
+function hasSavedSession() {
+  const sessionDirectoryPath = getExistingSessionDirectoryPath()
+
+  if (!existsSync(sessionDirectoryPath)) {
+    return false
+  }
+
+  try {
+    return readdirSync(sessionDirectoryPath).length > 0
+  } catch {
+    return false
+  }
+}
 
 function touchState() {
   runtime.baseState.lastUpdatedAt = new Date().toISOString()
@@ -303,7 +358,7 @@ function limitStoredMessages() {
 function upsertChatFromMessage(message: WhatsAppMessage, rawChatId?: string) {
   const threadId = message.threadId || canonicalThreadId(message.from)
   const existing = runtime.chatsById.get(threadId)
-  const phone = formatPhoneLabel(threadId)
+  const fallbackPhone = formatPhoneLabel(threadId)
   const nextUnreadCount =
     message.direction === "inbound"
       ? (existing?.unreadCount || 0) + 1
@@ -313,8 +368,8 @@ function upsertChatFromMessage(message: WhatsAppMessage, rawChatId?: string) {
 
   runtime.chatsById.set(threadId, {
     id: threadId,
-    displayName: existing?.displayName || phone,
-    phone,
+    displayName: existing?.displayName || fallbackPhone,
+    phone: existing?.phone || fallbackPhone,
     sendTarget: getSendTargetFromRawChatId(resolvedRawChatId),
     rawChatId: resolvedRawChatId,
     profilePictureUrl:
@@ -327,17 +382,20 @@ function upsertChatFromMessage(message: WhatsAppMessage, rawChatId?: string) {
   })
 }
 
-function storeMessage(messageLike: MessageLike) {
+function storeMessage(messageLike: MessageLike & { senderName?: string }) {
   const rawChatId = getMessageRawChatId(messageLike)
   const from = canonicalThreadId(rawChatId)
+  const messageId = getMessageId(messageLike)
+  const existing = runtime.messagesById.get(messageId)
 
   const entry: WhatsAppMessage = {
-    id: getMessageId(messageLike),
+    id: messageId,
     threadId: getMessageThreadId(messageLike),
     from,
     body: normalizeTextBody(messageLike.body),
     direction: messageLike.fromMe ? "outbound" : "inbound",
     timestamp: toIsoTimestamp(messageLike.timestamp),
+    senderName: messageLike.senderName || existing?.senderName,
   }
 
   runtime.messagesById.set(entry.id, entry)
@@ -401,51 +459,19 @@ async function syncChats(force = false) {
           ? toIsoTimestamp(chat.timestamp || chat.lastMessage?.timestamp)
           : null
 
-      let profilePictureUrl =
-        runtime.profilePictureUrlByChatId.get(rawId) ??
-        existing?.profilePictureUrl ??
-        null
-
-      let displayName = existing?.displayName || getChatDisplayName(chat)
-      let phoneLabel = phone
-
-      if (
-        !runtime.profilePictureUrlByChatId.has(rawId) ||
-        !existing?.displayName
-      ) {
-        try {
-          const contact = await chat.getContact?.()
-
-          if (contact?.name?.trim()) {
-            displayName = contact.name.trim()
-          } else if (contact?.pushname?.trim()) {
-            displayName = contact.pushname.trim()
-          } else if (contact?.shortName?.trim()) {
-            displayName = contact.shortName.trim()
-          }
-
-          if (contact?.number?.trim()) {
-            phoneLabel = contact.number.trim()
-          }
-
-          if (!runtime.profilePictureUrlByChatId.has(rawId)) {
-            profilePictureUrl = (await contact?.getProfilePicUrl?.()) || null
-            runtime.profilePictureUrlByChatId.set(rawId, profilePictureUrl)
-          }
-        } catch {
-          if (!runtime.profilePictureUrlByChatId.has(rawId)) {
-            runtime.profilePictureUrlByChatId.set(rawId, null)
-          }
-        }
-      }
-
+      // Preserve any previously-enriched contact data; only use fallbacks
+      // for fields we don't have yet. Never call getContact/getProfilePicUrl
+      // here — that happens lazily in enrichChatContact().
       runtime.chatsById.set(threadId, {
         id: threadId,
-        displayName,
-        phone: phoneLabel,
+        displayName: existing?.displayName || getChatDisplayName(chat),
+        phone: existing?.phone || phone,
         sendTarget: getSendTargetFromRawChatId(rawId),
         rawChatId: rawId,
-        profilePictureUrl,
+        profilePictureUrl:
+          existing?.profilePictureUrl ??
+          runtime.profilePictureUrlByChatId.get(rawId) ??
+          null,
         lastMessage: lastBody,
         lastTimestamp,
         unreadCount: Number(chat.unreadCount || 0),
@@ -459,6 +485,74 @@ async function syncChats(force = false) {
         error instanceof Error ? error.message : "Unable to load chats.",
       lastEvent: "chat_sync_error",
     })
+  }
+}
+
+// Enrich a single chat's display name, phone, and profile picture by calling
+// getContact() and getProfilePicUrl() exactly once per session. This is
+// deliberately separate from syncChats() so the connect/ready path stays fast.
+async function enrichChatContact(rawChatId: string) {
+  if (runtime.baseState.connection !== "open" || !runtime.client) {
+    return
+  }
+
+  // Already enriched this session — skip.
+  if (runtime.profilePictureUrlByChatId.has(rawChatId)) {
+    return
+  }
+
+  const threadId = canonicalThreadId(rawChatId)
+  const existing = runtime.chatsById.get(threadId)
+
+  try {
+    const chats = (await runtime.client.getChats()) as ChatLike[]
+    const chat = chats.find((c) => {
+      const id = getChatSerializedId(c)
+      return id === rawChatId || canonicalThreadId(id) === threadId
+    })
+
+    if (!chat) {
+      runtime.profilePictureUrlByChatId.set(rawChatId, null)
+      return
+    }
+
+    const contact = await chat.getContact?.()
+
+    let displayName = existing?.displayName || getChatDisplayName(chat)
+    let phoneLabel = existing?.phone || formatPhoneLabel(rawChatId)
+
+    if (contact?.name?.trim()) {
+      displayName = contact.name.trim()
+    } else if (contact?.pushname?.trim()) {
+      displayName = contact.pushname.trim()
+    } else if (contact?.shortName?.trim()) {
+      displayName = contact.shortName.trim()
+    }
+
+    if (contact?.number?.trim()) {
+      phoneLabel = contact.number.trim()
+    }
+
+    let profilePictureUrl: string | null = null
+    try {
+      profilePictureUrl = (await contact?.getProfilePicUrl?.()) || null
+    } catch {
+      profilePictureUrl = null
+    }
+
+    runtime.profilePictureUrlByChatId.set(rawChatId, profilePictureUrl)
+
+    if (existing) {
+      runtime.chatsById.set(threadId, {
+        ...existing,
+        displayName,
+        phone: phoneLabel,
+        profilePictureUrl,
+      })
+      touchState()
+    }
+  } catch {
+    runtime.profilePictureUrlByChatId.set(rawChatId, null)
   }
 }
 
@@ -542,6 +636,14 @@ async function hydrateChatMessages(chatId?: string) {
   }
 }
 
+// Resolve the raw chat ID stored for a given canonical thread ID so we can
+// pass it to enrichChatContact().
+function getRawChatIdForThread(chatId: string): string | null {
+  const threadId = canonicalThreadId(chatId)
+  const entry = runtime.chatsById.get(threadId)
+  return entry?.rawChatId || entry?.sendTarget || null
+}
+
 function buildStateSnapshot(): WhatsAppState {
   return {
     ...runtime.baseState,
@@ -551,10 +653,18 @@ function buildStateSnapshot(): WhatsAppState {
 }
 
 function createClient(options?: { pairing?: PairingConfig }) {
+  ensureSessionDirectory()
+
+  const shouldUseDefaultSessionLayout = existsSync(
+    getDefaultSessionDirectoryPath()
+  )
+
   const client = new Client({
     authStrategy: new LocalAuth({
-      clientId: "jokihub-dashboard",
-      dataPath: ".wwebjs_auth",
+      ...(shouldUseDefaultSessionLayout
+        ? {}
+        : { clientId: WHATSAPP_CLIENT_ID }),
+      dataPath: WHATSAPP_SESSION_ROOT,
     }),
     puppeteer: {
       headless: true,
@@ -746,6 +856,14 @@ async function ensureQrClient() {
     return runtime.initializePromise
   }
 
+  if (hasSavedSession()) {
+    updateBaseState({
+      connection: "connecting",
+      lastEvent: "restore_session",
+      lastError: null,
+    })
+  }
+
   return initializeClient("qr")
 }
 
@@ -843,7 +961,7 @@ export async function requestWhatsAppPairingCode(phone: string) {
   return buildStateSnapshot()
 }
 
-export async function sendWhatsAppText(phone: string, message: string) {
+export async function sendWhatsAppText(phone: string, message: string, senderName?: string) {
   const client = await ensureQrClient()
 
   if (runtime.baseState.connection !== "open") {
@@ -878,6 +996,7 @@ export async function sendWhatsAppText(phone: string, message: string) {
     body,
     fromMe: true,
     to: chatId,
+    senderName,
   })
 
   await syncChats(true)
@@ -914,6 +1033,13 @@ export async function logoutWhatsApp() {
     runtime.profilePictureUrlByChatId.clear()
     runtime.lastChatSyncAt = 0
 
+    try {
+      rmSync(getClientSessionDirectoryPath(), { recursive: true, force: true })
+      rmSync(getDefaultSessionDirectoryPath(), { recursive: true, force: true })
+    } catch {
+      // ignore session cleanup errors
+    }
+
     runtime.baseState = {
       ...createInitialBaseState(),
       lastEvent: "logged_out",
@@ -924,11 +1050,22 @@ export async function logoutWhatsApp() {
 }
 
 export async function getWhatsAppState(chatId?: string) {
+  if (!runtime.client && !runtime.initializePromise && hasSavedSession()) {
+    void ensureQrClient()
+  }
+
   if (runtime.client && runtime.baseState.connection === "open") {
     await setConnectedJid(runtime.client)
     await syncChats()
-    await hydrateChatMessages(chatId)
-    await markChatAsRead(chatId)
+
+    if (chatId) {
+      // Lazily enrich the contact for the selected chat (once per session).
+      const rawChatId = getRawChatIdForThread(chatId) || chatId
+      void enrichChatContact(rawChatId)
+
+      await hydrateChatMessages(chatId)
+      await markChatAsRead(chatId)
+    }
   }
 
   return buildStateSnapshot()

@@ -4,10 +4,13 @@ import Image from "next/image"
 import { useEffect, useState } from "react"
 import {
   LoaderCircle,
+  MessageSquareQuote,
+  Plus,
   QrCode,
   RefreshCw,
   ShieldCheck,
   Smartphone,
+  Trash2,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -19,6 +22,12 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import {
+  createQuickReply,
+  getQuickReplies,
+  saveQuickReplies,
+  type WhatsAppQuickReply,
+} from "@/lib/whatsapp-dashboard-storage"
 import { cn } from "@/lib/utils"
 
 type WhatsAppState = {
@@ -56,6 +65,7 @@ async function readJson(response: Response) {
 export function WhatsAppSettingsPanel() {
   const [state, setState] = useState(defaultState)
   const [phone, setPhone] = useState("")
+  const [quickReplies, setQuickReplies] = useState<WhatsAppQuickReply[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
@@ -80,14 +90,22 @@ export function WhatsAppSettingsPanel() {
   }
 
   useEffect(() => {
+    setQuickReplies(getQuickReplies())
     void refreshStatus()
 
     const interval = window.setInterval(() => {
       void refreshStatus()
     }, 5000)
 
+    const handleStorage = () => {
+      setQuickReplies(getQuickReplies())
+    }
+
+    window.addEventListener("storage", handleStorage)
+
     return () => {
       window.clearInterval(interval)
+      window.removeEventListener("storage", handleStorage)
     }
   }, [])
 
@@ -123,7 +141,9 @@ export function WhatsAppSettingsPanel() {
       setPhone("")
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to reset WhatsApp."
+        error instanceof Error
+          ? error.message
+          : "Unable to log out and clear the saved WhatsApp session."
       )
     } finally {
       setIsSubmitting(false)
@@ -155,59 +175,40 @@ export function WhatsAppSettingsPanel() {
     }
   }
 
+  function handleAddQuickReply() {
+    setQuickReplies((current) => [...current, createQuickReply()])
+  }
+
+  function handleQuickReplyChange(
+    id: string,
+    field: "title" | "message",
+    value: string
+  ) {
+    setQuickReplies((current) =>
+      current.map((entry) =>
+        entry.id === id ? { ...entry, [field]: value } : entry
+      )
+    )
+  }
+
+  function handleRemoveQuickReply(id: string) {
+    setQuickReplies((current) => current.filter((entry) => entry.id !== id))
+  }
+
+  function handleSaveQuickReplies() {
+    const normalized = quickReplies.filter(
+      (entry) => entry.title.trim() && entry.message.trim()
+    )
+
+    saveQuickReplies(normalized)
+    setQuickReplies(normalized.length ? normalized : [createQuickReply()])
+  }
+
   const isConnected = state.connection === "open"
 
   return (
-    <Card className="flex h-full min-h-0 flex-col gap-0 overflow-hidden border-border/70 bg-card py-0 shadow-sm">
-      <CardHeader className="border-b border-border/60 bg-muted/20 py-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-lg">WhatsApp Settings</CardTitle>
-            <CardDescription>
-              Manage WhatsApp session connection, QR authentication, and pairing
-              code access.
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void refreshStatus()}
-              disabled={isSubmitting}
-              className="gap-2"
-            >
-              <RefreshCw className="size-4" />
-              Refresh
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleConnect}
-              disabled={isSubmitting || state.connection === "connecting"}
-              className="gap-2"
-            >
-              {state.connection === "connecting" ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <Smartphone className="size-4" />
-              )}
-              {state.connection === "connecting" ? "Connecting" : "Connect"}
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={handleLogout}
-              disabled={isSubmitting}
-            >
-              Reset
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex-1 overflow-y-auto p-6">
+    <div className="flex h-full min-h-0 flex-col gap-0 overflow-hidden border border-border/70 bg-card shadow-sm rounded-xl">
+      <div className="flex-1 overflow-y-auto p-6 md:p-8">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <div className="space-y-6">
             <div className="rounded-2xl border border-border/60 bg-background p-5 shadow-xs">
@@ -300,15 +301,151 @@ export function WhatsAppSettingsPanel() {
                 </div>
               ) : null}
             </div>
+
+            <div className="rounded-2xl border border-border/60 bg-background p-5 shadow-xs">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <MessageSquareQuote className="size-4" />
+                    Quick Replies
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Manage reusable reply templates for the chat inbox.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddQuickReply}
+                  className="gap-2"
+                >
+                  <Plus className="size-4" />
+                  Add reply
+                </Button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {quickReplies.length ? (
+                  quickReplies.map((reply, index) => (
+                    <div
+                      key={reply.id}
+                      className="rounded-xl border border-border/60 bg-muted/20 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">
+                            Reply template {index + 1}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Title for the button and the message body used in
+                            chat.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveQuickReply(reply.id)}
+                          className="size-8"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+
+                      <div className="mt-4 grid gap-3">
+                        <Input
+                          placeholder="Template title"
+                          value={reply.title}
+                          onChange={(event) =>
+                            handleQuickReplyChange(
+                              reply.id,
+                              "title",
+                              event.target.value
+                            )
+                          }
+                          className="h-10 border-border/60 bg-background"
+                        />
+                        <textarea
+                          placeholder="Template message"
+                          value={reply.message}
+                          onChange={(event) =>
+                            handleQuickReplyChange(
+                              reply.id,
+                              "message",
+                              event.target.value
+                            )
+                          }
+                          className="min-h-28 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm outline-none"
+                        />
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                    No quick replies yet. Add your first template.
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <Button
+                  type="button"
+                  onClick={handleSaveQuickReplies}
+                  className="gap-2"
+                >
+                  <MessageSquareQuote className="size-4" />
+                  Save quick replies
+                </Button>
+              </div>
+            </div>
           </div>
 
-          <div className="rounded-2xl border border-border/60 bg-background p-5 shadow-xs">
+          <div className="rounded-2xl border border-border/60 bg-background p-5 shadow-xs flex flex-col">
             <p className="text-sm font-semibold">QR authentication</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Scan this QR from the WhatsApp mobile app to link the session.
             </p>
 
-            <div className="mt-5 flex min-h-80 items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/20 p-6">
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void refreshStatus()}
+                disabled={isSubmitting}
+                className="gap-2 flex-1"
+              >
+                <RefreshCw className="size-4" />
+                Refresh
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleConnect}
+                disabled={isSubmitting || state.connection === "connecting"}
+                className="gap-2 flex-1"
+              >
+                {state.connection === "connecting" ? (
+                  <LoaderCircle className="size-4 animate-spin" />
+                ) : (
+                  <Smartphone className="size-4" />
+                )}
+                {state.connection === "connecting" ? "Connecting" : "Connect"}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={handleLogout}
+                disabled={isSubmitting}
+                className="flex-1"
+              >
+                Logout & Reset
+              </Button>
+            </div>
+
+            <div className="mt-5 flex flex-1 min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/20 p-6">
               {state.qrCodeDataUrl ? (
                 <div className="flex flex-col items-center text-center">
                   <Image
@@ -340,7 +477,7 @@ export function WhatsAppSettingsPanel() {
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

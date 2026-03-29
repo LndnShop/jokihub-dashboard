@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { getAuthenticatedUser } from "@/lib/auth"
 import { getPocketBaseUrl } from "@/lib/pocketbase"
 
@@ -36,17 +37,19 @@ export default async function DashboardLayout({
       : undefined
 
   return (
-    <SidebarProvider defaultOpen>
-      <AppSidebar
-        user={{
-          name: user.name || user.email.split("@")[0] || "JokiHub User",
-          email: user.email,
-          role: formatRoleLabel(user.role),
-          avatar: avatarUrl,
-          isOwner: user.role === "owner",
-        }}
-      />
-      <SidebarInset className="h-svh overflow-hidden">{children}</SidebarInset>
-    </SidebarProvider>
+    <TooltipProvider>
+      <SidebarProvider defaultOpen>
+        <AppSidebar
+          user={{
+            name: user.name || user.email.split("@")[0] || "JokiHub User",
+            email: user.email,
+            role: formatRoleLabel(user.role),
+            avatar: avatarUrl,
+            isOwner: user.role === "owner",
+          }}
+        />
+        <SidebarInset className="h-svh overflow-hidden">{children}</SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   )
 }
