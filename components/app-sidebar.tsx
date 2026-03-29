@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, MessageSquareMore, Settings, ChevronRight } from "lucide-react"
+import { LayoutDashboard, MessageSquareMore, Settings, ChevronRight, ClipboardList, DatabaseZap } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
 import {
@@ -72,8 +72,30 @@ export function AppSidebar({
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/pesanan"}
+                >
+                  <Link href="/dashboard/pesanan">
+                    <ClipboardList />
+                    <span>Pesanan</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/dashboard/history"}
+                >
+                  <Link href="/dashboard/history">
+                    <DatabaseZap />
+                    <span>History</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {user.isOwner ? (
-                <Collapsible defaultOpen={pathname.startsWith("/dashboard/settings")} className="group/collapsible">
+                <Collapsible defaultOpen={pathname.startsWith("/dashboard/settings")} className="group/collapsible" asChild>
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
                       <SidebarMenuButton

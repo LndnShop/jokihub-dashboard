@@ -11,6 +11,7 @@ import {
   SendHorizontal,
   ShieldCheck,
   UserRound,
+  Wand2,
   Zap,
   FileText,
 } from "lucide-react"
@@ -207,6 +208,7 @@ export function WhatsAppPanel() {
   const [quickReplies, setQuickReplies] = useState<WhatsAppQuickReply[]>([])
   const [isContactInfoOpen, setIsContactInfoOpen] = useState(false)
   const [isOrderInputerOpen, setIsOrderInputerOpen] = useState(false)
+  const [orderInitialText, setOrderInitialText] = useState("")
   const [selectedChatId, setSelectedChatId] = useState("")
   const [search, setSearch] = useState("")
   const [isLoading, setIsLoading] = useState(true)
@@ -505,7 +507,10 @@ export function WhatsAppPanel() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsOrderInputerOpen(true)}
+                      onClick={() => {
+                        setOrderInitialText("")
+                        setIsOrderInputerOpen(true)
+                      }}
                       className="ml-1 h-7 rounded-full bg-primary/10 px-3 text-primary hover:bg-primary/20 hover:text-primary border-primary/20 shadow-none font-semibold"
                     >
                       <FileText className="size-3.5 mr-1" />
@@ -558,6 +563,7 @@ export function WhatsAppPanel() {
                 <div className="mx-auto flex min-h-full max-w-4xl flex-col justify-end gap-3">
                   {visibleMessages.map((entry) => {
                     const isOutbound = entry.direction === "outbound"
+                    const isOrderFormat = !isOutbound && /Nama/i.test(entry.body) && /Jenis Joki/i.test(entry.body)
 
                     return (
                       <div
@@ -567,28 +573,43 @@ export function WhatsAppPanel() {
                           isOutbound ? "justify-end" : "justify-start"
                         )}
                       >
-                        <div
-                          className={cn(
-                            "max-w-[78%] rounded-2xl border px-4 py-3 shadow-xs",
-                            isOutbound
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "text-primary-background border-border/70 bg-background"
-                          )}
-                        >
-                          <p className="text-sm leading-6 wrap-break-word whitespace-pre-wrap">
-                            {formatWhatsAppText(entry.body)}
-                          </p>
-                          <p
+                        <div className="flex flex-col max-w-[78%] gap-2">
+                          <div
                             className={cn(
-                              "mt-2 text-[11px]",
+                              "rounded-2xl border px-4 py-3 shadow-xs",
                               isOutbound
-                                ? "text-primary-foreground/70"
-                                : "text-muted-foreground"
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "text-primary-background border-border/70 bg-background"
                             )}
                           >
-                            {new Date(entry.timestamp).toLocaleString()}
-                            {isOutbound && ` - Admin ${entry.senderName || "System"}`}
-                          </p>
+                            <p className="text-sm leading-6 wrap-break-word whitespace-pre-wrap">
+                              {formatWhatsAppText(entry.body)}
+                            </p>
+                            <p
+                              className={cn(
+                                "mt-2 text-[11px]",
+                                isOutbound
+                                  ? "text-primary-foreground/70"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {new Date(entry.timestamp).toLocaleString()}
+                              {isOutbound && ` - Admin ${entry.senderName || "System"}`}
+                            </p>
+                          </div>
+                          {isOrderFormat && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setOrderInitialText(entry.body)
+                                setIsOrderInputerOpen(true)
+                              }}
+                              className="w-fit h-[22px] p-1 text-xs rounded-lg bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary border-primary/20 shadow-none font-semibold mt-3.5 ml-1 self-start"
+                            >
+                              Make Order
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )
@@ -698,7 +719,12 @@ export function WhatsAppPanel() {
           </section>
         </div>
       </div>
-      <OrderInputerSheet open={isOrderInputerOpen} onOpenChange={setIsOrderInputerOpen} />
+      <OrderInputerSheet 
+        open={isOrderInputerOpen} 
+        onOpenChange={setIsOrderInputerOpen} 
+        initialText={orderInitialText} 
+        customerPhone={activeThread?.phone || ""}
+      />
     </div>
   )
 }

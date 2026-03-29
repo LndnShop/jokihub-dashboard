@@ -13,6 +13,12 @@ export default async function DashboardChatPage() {
   return (
     <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background px-4 py-6 md:px-8 md:py-8">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-6">
+        <div className="flex items-center justify-between shrink-0">
+          <div>
+            <h1 className="text-2xl font-bold font-heading tracking-tight">Live Chat</h1>
+            <p className="text-muted-foreground mt-1 text-sm">Manage live conversations and create orders directly from chats.</p>
+          </div>
+        </div>
         <div className="min-h-0 flex-1">
           <WhatsAppPanel />
         </div>
