@@ -51,6 +51,9 @@ export function OrdersListClient({ initialOrders, currentUserEmail }: { initialO
             <div className="flex items-center gap-2">
               <span className="font-semibold text-base text-card-foreground truncate">{order.nama_customer}</span>
               <span className="text-xs font-semibold px-2 py-0.5 bg-muted text-muted-foreground rounded-full whitespace-nowrap">
+                Jumlah: {order.jumlah}
+              </span>
+              <span className="text-xs font-semibold px-2 py-0.5 bg-muted text-muted-foreground rounded-full whitespace-nowrap">
                 {order.jenis_joki}
               </span>
               <span className="flex gap-1 items-center text-xs font-semibold px-2 py-0.5 bg-muted text-muted-foreground rounded-full whitespace-nowrap">
@@ -61,9 +64,10 @@ export function OrdersListClient({ initialOrders, currentUserEmail }: { initialO
                 <Tag className="size-3.5" />
                 Rp {(order.total_harga || 0).toLocaleString("id-ID")}
               </span>
+
             </div>
             <div className="text-sm text-muted-foreground break-words pr-4 line-clamp-2">
-              {order.detail_joki} ({order.jumlah}x)
+              {order.detail_joki}
             </div>
             {order.catatan && (
               <p className="text-xs text-muted-foreground/80 italic mt-1 bg-muted/30 p-2 rounded line-clamp-1 border border-border/40 w-fit max-w-full">
